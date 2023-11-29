@@ -1,12 +1,11 @@
 import AWS from 'aws-sdk';
 import fetch from 'node-fetch';
-import nodemailer from 'nodemailer';
+import Mailgun from 'mailgun.js';
+import FormData from 'form-data';
 import { Storage } from '@google-cloud/storage';
 import { v4 as uuidv4 } from 'uuid'
 const key = process.env.GCP_APP_CREDENTIALS
 const gcsBucketName = process.env.GCP_BUCKET
-const user_id = process.env.USER_ID
-const password = process.env.PASSWORD
 const dynamoDBTable = process.env.DYNAMODB_TABLE
 const keyBuffer = Buffer.from(key, 'base64');
 const keyData = JSON.parse(keyBuffer.toString('utf-8'));
@@ -14,15 +13,11 @@ const keyData = JSON.parse(keyBuffer.toString('utf-8'));
 const storage = new Storage({
   credentials: keyData,
 });
-const transporter = nodemailer.createTransport({
-  host: 'smtp.mailgun.org',
-  port: 587,
-  secure: false,
-  auth: {
-    user: user_id,
-    pass: password,
-  },
-});
+const mailgun = new Mailgun(FormData);
+const mailgunApiKey = process.env.MAILGUN_API;
+const mailgunDomain = process.env.MAILGUN_DOMAIN;
+const mg = mailgun.client({ username: "api", key: mailgunApiKey });
+const user_id = `varshakumbham@${mailgunDomain}`
 
 const s3 = new AWS.S3();
 const dynamoDB = new AWS.DynamoDB.DocumentClient();
@@ -78,14 +73,12 @@ export async function upload_zip_to_gcs(user_email, submission_url) {
 
 export async function sendEmail(to, subject, message) {
   try {
-    const mailOptions = {
+    mg.messages.create(mailgunDomain, {
       from: user_id,
-      to: to,
+      to: [to],
       subject: subject,
       text: message,
-    };
-    const result = await transporter.sendMail(mailOptions);
-    console.log(result);
+    })
     return {
       statusCode: 200,
       body: 'Success',
