@@ -13,6 +13,7 @@
     "@google-cloud/storage": "^7.6.0",
     "aws-sdk": "^2.1502.0",
     "node-fetch": "^3.3.2",
-    "nodemailer": "^6.9.7"
+    "nodemailer": "^6.9.7",
+    "uuid": "^9.0.1"
   }
 }
