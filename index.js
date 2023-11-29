@@ -17,7 +17,7 @@ const mailgun = new Mailgun(FormData);
 const mailgunApiKey = process.env.MAILGUN_API;
 const mailgunDomain = process.env.MAILGUN_DOMAIN;
 const mg = mailgun.client({ username: "api", key: mailgunApiKey });
-const user_id = `varshakumbham@${mailgunDomain}`
+const user_id = `varshareddykumbham@${mailgunDomain}`
 
 const s3 = new AWS.S3();
 const dynamoDB = new AWS.DynamoDB.DocumentClient();
