@@ -2,15 +2,17 @@ import AWS from 'aws-sdk';
 import fetch from 'node-fetch';
 import nodemailer from 'nodemailer';
 import { Storage } from '@google-cloud/storage';
-const key = JSON.parse(process.env.GCP_APP_CREDENTIALS)
+import { v4 as uuidv4 } from 'uuid'
+const key = process.env.GCP_APP_CREDENTIALS
 const gcsBucketName = process.env.GCP_BUCKET
-const project_id = process.env.PROJECT_ID
 const user_id = process.env.USER_ID
 const password = process.env.PASSWORD
 const dynamoDBTable = process.env.DYNAMODB_TABLE
+const keyBuffer = Buffer.from(key, 'base64');
+const keyData = JSON.parse(keyBuffer.toString('utf-8'));
+
 const storage = new Storage({
-  projectId: project_id,
-  credentials: key,
+  credentials: keyData,
 });
 const transporter = nodemailer.createTransport({
   host: 'smtp.mailgun.org',
@@ -33,52 +35,91 @@ export const handler = async (event, context) => {
     const { user_email, submission_url } = JSON.parse(JSON.stringify(snsMessage));
 
     // Download release from GitHub
-    const releaseResponse = await fetch(submission_url);
-    const releaseDataArrayBuffer = await releaseResponse.arrayBuffer();
-    const releaseData = Buffer.from(releaseDataArrayBuffer);
-    const gcsFileName = `${user_email}/release.zip`;
-    await storage.bucket(gcsBucketName).file(gcsFileName).save(releaseData);
-
+    const result = await upload_zip_to_gcs(user_email, submission_url)
+    
     // Email the user about the status of the download
-    await sendEmail(user_email, 'Download Status', 'Release downloaded successfully.');
+    const status = await sendEmail(user_email, 'Assignment Download Status', result.msg);
 
     // Track the email in DynamoDB
-    await trackEmail(user_email, 'Download Status', new Date().toISOString(), submission_url);
+    await trackEmail(user_email, 'Assignment Download Status', new Date().toISOString(), submission_url, status.body);
 
     return { statusCode: 200, body: 'Success' };
   } catch (error) {
     console.error('Error:', error);
-    return { statusCode: 500, body: 'Internal Server Error' };
+    return { statusCode: 500, body: `Internal Server Error: ${error}` };
   }
 };
 
-export async function sendEmail(from, to, subject, message) {
-  const mailOptions = {
-    from: user_id,
-    to: to,
-    subject: subject,
-    text: message,
-  };
-  const result = await transporter.sendMail(mailOptions);
-  console.log(result);
-  return {
-    statusCode: 200,
-    body: JSON.stringify({ message: 'Email sent successfully' }),
-  };
+export async function upload_zip_to_gcs(user_email, submission_url) {
+  try {
+    const releaseResponse = await fetch(submission_url);
+    if(!releaseResponse.ok){
+      return { 
+        statusCode: 400, 
+        msg: `Unable to fetch the file. Check your submission url is:${submission_url}` 
+      }
+    }
+    const releaseDataArrayBuffer = await releaseResponse.arrayBuffer();
+    const releaseData = Buffer.from(releaseDataArrayBuffer);
+    const timestamp = new Date().toISOString().replace(/[-T:.Z]/g, "");
+    const gcsFileName = `${user_email}/release_${timestamp}.zip`;
+    const result = await storage.bucket(gcsBucketName).file(gcsFileName).save(releaseData);
+    return {
+      statusCode: 200,
+      msg: `Successfully uploaded the file to GCS Bucket: ${gcsBucketName}/${gcsFileName}: Your submission url is:${submission_url}`,
+    };
+  } catch (error) {
+    console.error('Error:', error);
+    return { 
+      statusCode: 500, 
+      msg: `Unable to upload the file due to following error: ${error}: Your submission url is:${submission_url}` };
+  }
 }
 
-export async function trackEmail(user_email, subject, timestamp, submission_url) {
-  const params = {
-    TableName: dynamoDBTable,
-    Item: {
-      user_email: user_email,
+export async function sendEmail(to, subject, message) {
+  try {
+    const mailOptions = {
+      from: user_id,
+      to: to,
       subject: subject,
-      timestamp: timestamp,
-      submission_url: submission_url
-    },
-  };
+      text: message,
+    };
+    const result = await transporter.sendMail(mailOptions);
+    console.log(result);
+    return {
+      statusCode: 200,
+      body: 'Success',
+    };
+  }
+    catch (error) {
+      console.error('Error:', error);
+      return { statusCode: 500, body: 'Failed' };
+    }
+}
 
-  await dynamoDB.put(params).promise();
+export async function trackEmail(user_email, subject, timestamp, submission_url, status_msg) {
+  try {
+    const params = {
+      TableName: dynamoDBTable,
+      Item: {
+        uuid: uuidv4(),
+        user_email: user_email,
+        subject: subject,
+        timestamp: timestamp,
+        submission_url: submission_url,
+        email_status: status_msg,
+      },
+    };
+    const result = await dynamoDB.put(params).promise();
+    console.log(result)
+    return {
+      statusCode: 200,
+      body: JSON.stringify({ message: 'Updated email status in Dynamodb' }),
+    };
+  } catch (error) {
+    console.error('Error:', error);
+    return { statusCode: 500, body: `Internal Server Error: ${error}` };
+  }
 }
 
 
