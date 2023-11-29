@@ -51,7 +51,7 @@ export async function upload_zip_to_gcs(user_email, submission_url) {
     if(!releaseResponse.ok){
       return { 
         statusCode: 400, 
-        msg: `Unable to fetch the file. Check your submission url is:${submission_url}` 
+        msg: `Unable to fetch the file. Please check your submission url and re-submit` 
       }
     }
     const releaseDataArrayBuffer = await releaseResponse.arrayBuffer();
@@ -61,19 +61,19 @@ export async function upload_zip_to_gcs(user_email, submission_url) {
     const result = await storage.bucket(gcsBucketName).file(gcsFileName).save(releaseData);
     return {
       statusCode: 200,
-      msg: `Successfully uploaded the file to GCS Bucket: ${gcsBucketName}/${gcsFileName}: Your submission url is:${submission_url}`,
+      msg: `Successfully uploaded the file to GCS Bucket: ${gcsBucketName}/${gcsFileName}`,
     };
   } catch (error) {
     console.error('Error:', error);
     return { 
       statusCode: 500, 
-      msg: `Unable to upload the file due to following error: ${error}: Your submission url is:${submission_url}` };
+      msg: `Unable to upload the file due to following error: ${error}` };
   }
 }
 
 export async function sendEmail(to, subject, message) {
   try {
-    mg.messages.create(mailgunDomain, {
+    await mg.messages.create(mailgunDomain, {
       from: user_id,
       to: [to],
       subject: subject,
