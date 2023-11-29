@@ -36,7 +36,7 @@ export const handler = async (event, context) => {
     const status = await sendEmail(user_email, 'Assignment Download Status', result.msg);
 
     // Track the email in DynamoDB
-    await trackEmail(user_email, 'Assignment Download Status', new Date().toISOString(), submission_url, status.body);
+    await trackEmail(user_email, 'Assignment Download Status', new Date().toISOString(), submission_url, result.msg);
 
     return { statusCode: 200, body: 'Success' };
   } catch (error) {
@@ -51,7 +51,7 @@ export async function upload_zip_to_gcs(user_email, submission_url) {
     if(!releaseResponse.ok){
       return { 
         statusCode: 400, 
-        msg: `Unable to fetch the file. Please check your submission url and re-submit` 
+        msg: `Error: Unable to fetch the file. Please check your submission url and re-submit` 
       }
     }
     const releaseDataArrayBuffer = await releaseResponse.arrayBuffer();
@@ -67,17 +67,23 @@ export async function upload_zip_to_gcs(user_email, submission_url) {
     console.error('Error:', error);
     return { 
       statusCode: 500, 
-      msg: `Unable to upload the file due to following error: ${error}` };
+      msg: `Error: Unable to upload the file due to following error: ${error}` };
   }
 }
 
 export async function sendEmail(to, subject, message) {
+  const htmlMessage = `<html>
+  <body>
+    <h2>CSYE6225 Assignment Submission Status</h2>
+    <p>Hi there, ${message}</p>
+  </body>
+</html>`
   try {
     await mg.messages.create(mailgunDomain, {
       from: user_id,
       to: [to],
       subject: subject,
-      text: message,
+      html: htmlMessage
     })
     return {
       statusCode: 200,
@@ -100,7 +106,7 @@ export async function trackEmail(user_email, subject, timestamp, submission_url,
         subject: subject,
         timestamp: timestamp,
         submission_url: submission_url,
-        email_status: status_msg,
+        submission_status: status_msg,
       },
     };
     const result = await dynamoDB.put(params).promise();
